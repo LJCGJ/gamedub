@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>GameDub</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">GameDub</div>
+    <div class="toolbar">
+      <button id="btn-abrir">Abrir projeto…</button>
+      <span id="work-path" class="muted">nenhum projeto aberto</span>
+    </div>
+    <div class="toolbar etapas">
+      <button data-etapa="transcribe" disabled>Transcrever</button>
+      <button data-etapa="translate" disabled>Traduzir</button>
+      <button data-etapa="synth" disabled>Sintetizar</button>
+      <button data-etapa="inject" disabled>Gerar pacotes</button>
+    </div>
+  </header>
+
+  <main>
+    <aside id="pacotes">
+      <div class="aside-title">Pacotes</div>
+      <ul id="lista-pacotes"></ul>
+      <div class="aside-title">Filtros</div>
+      <input id="busca" type="search" placeholder="buscar texto ou id" />
+      <select id="filtro-personagem"><option value="">todos os personagens</option></select>
+      <select id="filtro-status">
+        <option value="">todos os status</option>
+        <option value="extraido">extraído</option>
+        <option value="transcrito">transcrito</option>
+        <option value="traduzido">traduzido</option>
+        <option value="sintetizado">sintetizado</option>
+        <option value="erro">com erro</option>
+      </select>
+      <div id="contagem" class="muted"></div>
+    </aside>
+
+    <section id="tabela-wrap">
+      <table id="tabela">
+        <thead>
+          <tr><th>Personagem</th><th>Original</th><th>Tradução</th><th>Dur.</th><th>Status</th></tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </section>
+
+    <aside id="detalhe">
+      <div class="aside-title">Fala selecionada</div>
+      <div id="detalhe-vazio" class="muted">Clique em uma fala.</div>
+      <div id="detalhe-conteudo" hidden>
+        <div class="campo"><label>ID</label><code id="d-id"></code></div>
+        <div class="campo"><label>Personagem</label><input id="d-personagem" /></div>
+        <div class="campo">
+          <label>Original <button class="mini" id="play-orig">▶</button></label>
+          <div id="d-en" class="texto"></div>
+        </div>
+        <div class="campo">
+          <label>Tradução <button class="mini" id="play-pt" disabled>▶</button></label>
+          <textarea id="d-pt" rows="4"></textarea>
+          <div class="muted" id="d-medida"></div>
+        </div>
+        <div class="acoes">
+          <button id="btn-salvar" class="primario">Salvar</button>
+          <button id="btn-regerar">Regerar áudio</button>
+        </div>
+        <audio id="player"></audio>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    <div id="log"></div>
+  </footer>
+
+  <script src="main.js"></script>
+</body>
+</html>
