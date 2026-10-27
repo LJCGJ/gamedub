@@ -1,5 +1,5 @@
 """
-Tradução EN → PT-BR com glossário fixo e contexto de personagem.
+Tradução → PT-BR com glossário e contexto vindos do perfil do jogo.
 
 Backends:
   anthropic  — usa ANTHROPIC_API_KEY (melhor qualidade para humor/gíria)
@@ -8,53 +8,47 @@ Backends:
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 from . import catalog
+from .profile import Profile
 
-GLOSSARIO_PADRAO = {
-    # mantidos em inglês (nomes próprios do universo)
-    "Claptrap": "Claptrap", "Pandora": "Pandora", "Vault": "Vault",
-    "Crimson Lance": "Crimson Lance", "Hyperion": "Hyperion",
-    "Dahl": "Dahl", "Atlas": "Atlas", "Fyrestone": "Fyrestone",
-    "Skag": "Skag", "Rakk": "Rakk", "Psycho": "Psycho",
-    "Marcus": "Marcus", "Moxxi": "Moxxi", "Scooter": "Scooter",
-    "Tannis": "Tannis", "Zed": "Zed", "Angel": "Angel",
-    "Catch-A-Ride": "Catch-A-Ride", "Eridian": "Eridiano",
-    "Bandit": "bandido", "Vault Hunter": "Caçador da Vault",
-}
-
-SYSTEM = """Você é tradutor de localização de jogos para português do Brasil.
-Traduza falas do jogo Borderlands (FPS de humor ácido, violento e irreverente).
+SYSTEM_BASE = """Você é tradutor de localização de jogos para português do Brasil.
+Jogo: {nome}
+Contexto: {descricao}
 Regras:
-- Mantenha o tom: gírias, xingamentos e piadas devem soar naturais em PT-BR.
+- Mantenha o tom do jogo e a voz de cada personagem.
 - A fala será dublada e precisa caber no mesmo tempo da original: prefira
-  frases curtas, nunca mais longas que o inglês.
-- Use o glossário à risca. Não traduza nomes próprios que o glossário mantém.
-- Responda SOMENTE com um JSON: {"id": "texto traduzido", ...}.
+  frases curtas, nunca mais longas que o texto de origem.
+- Use o glossário à risca. Não traduza termos que o glossário mantém.
+- Responda SOMENTE com um JSON: {{"id": "texto traduzido", ...}}.
 """
 
 
+def _system(profile: Profile) -> str:
+    return SYSTEM_BASE.format(nome=profile.nome,
+                              descricao=profile.descricao or "não informado")
+
+
 def _prompt(lote: list[catalog.Fala], glossario: dict) -> str:
-    itens = [{"id": f.id, "personagem": f.personagem, "en": f.texto_en} for f in lote]
+    itens = [{"id": f.id, "personagem": f.personagem, "origem": f.texto_en} for f in lote]
     return ("Glossário: " + json.dumps(glossario, ensure_ascii=False) +
             "\n\nFalas:\n" + json.dumps(itens, ensure_ascii=False, indent=1))
 
 
-def _anthropic(prompt: str, model: str) -> str:
+def _anthropic(system: str, prompt: str, model: str) -> str:
     import anthropic
     client = anthropic.Anthropic()
-    msg = client.messages.create(model=model, max_tokens=4096, system=SYSTEM,
+    msg = client.messages.create(model=model, max_tokens=4096, system=system,
                                  messages=[{"role": "user", "content": prompt}])
     return msg.content[0].text
 
 
-def _ollama(prompt: str, model: str) -> str:
+def _ollama(system: str, prompt: str, model: str) -> str:
     import requests
     r = requests.post("http://localhost:11434/api/chat", json={
         "model": model, "stream": False, "format": "json",
-        "messages": [{"role": "system", "content": SYSTEM},
+        "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": prompt}]})
     r.raise_for_status()
     return r.json()["message"]["content"]
@@ -67,14 +61,16 @@ def _parse(text: str) -> dict:
     return json.loads(text)
 
 
-def run(work: str | Path, backend: str = "anthropic", model: str | None = None,
-        batch: int = 20, glossario_path: str | None = None, only_missing=True):
-    glossario = dict(GLOSSARIO_PADRAO)
-    if glossario_path:
-        glossario.update(json.loads(Path(glossario_path).read_text(encoding="utf-8")))
+def run(work: str | Path, profile: Profile, backend: str = "anthropic",
+        model: str | None = None, batch: int = 20,
+        glossario_extra: str | None = None, only_missing=True):
+    glossario = dict(profile.glossario)
+    if glossario_extra:
+        glossario.update(json.loads(Path(glossario_extra).read_text(encoding="utf-8")))
 
     model = model or ("claude-sonnet-5-5" if backend == "anthropic" else "qwen2.5:14b")
     call = _anthropic if backend == "anthropic" else _ollama
+    system = _system(profile)
 
     falas = catalog.load(work)
     fila = [f for f in falas if f.texto_en and (not only_missing or not f.texto_pt)]
@@ -83,7 +79,7 @@ def run(work: str | Path, backend: str = "anthropic", model: str | None = None,
     for i in range(0, len(fila), batch):
         lote = fila[i:i + batch]
         try:
-            resp = _parse(call(_prompt(lote, glossario), model))
+            resp = _parse(call(system, _prompt(lote, glossario), model))
         except Exception as e:  # noqa: BLE001
             for f in lote:
                 f.status = f"erro:traducao {e}"

@@ -10,9 +10,20 @@ Fluxo:
       ◀──inject──  .ogg (PT-BR)  ◀──synth────────  texto_pt ◀──translate──┘
 ```
 
-Primeiro alvo: **Borderlands 1 (PC, Unreal Engine 3)**. O núcleo
-(transcrever → traduzir → sintetizar) é genérico; a leitura e a
-reinjeção ficam em `gamedub/formats/` e ganham um módulo por engine.
+O núcleo (transcrever → traduzir → sintetizar) não conhece nenhum jogo.
+O que é específico fica em dois lugares:
+
+- **`profiles/<jogo>.json`** — glossário, descrição do tom para o
+  tradutor, regex de `id da fala → personagem`, formato do pacote.
+  É o que a comunidade preenche para cada jogo novo, sem mexer em código.
+- **`gamedub/formats/<engine>_plugin.py`** — como ler e reescrever o
+  pacote daquela engine. Interface em `formats/registry.py`
+  (`describe`, `extract`, `inject`).
+
+Primeiro alvo: **Borderlands 1 (PC, Unreal Engine 3)** — perfil
+`borderlands1`, plugin `upk`. Próximos plugins, por cobertura de jogos:
+Wwise (`.bnk/.wem`: Borderlands 2/3 e a maioria dos AAA), FMOD
+(`.fsb/.bank`), UE4/5 (`.pak`), Unity (`.assets`).
 
 ## Requisitos
 
@@ -29,8 +40,11 @@ pip install -r requirements.txt
 ## Uso (prova de conceito com um pacote)
 
 ```bash
-# 1. lista e extrai as falas de um .upk
-python cli.py extract "C:\...\Borderlands\WillowGame\CookedPC\Maps\Arid\Arid_P_INT.upk" work\arid
+# 0. inspeciona o pacote (formato detectado pela extensão, ou --formato)
+python cli.py info "C:\...\Borderlands\WillowGame\CookedPC\Maps\Arid\Arid_P_INT.upk"
+
+# 1. extrai as falas usando o perfil do jogo
+python cli.py extract "C:\...\Arid_P_INT.upk" work\arid --perfil borderlands1
 
 # 2. transcreve (faster-whisper)
 python cli.py transcribe work\arid

@@ -7,7 +7,7 @@ from . import catalog
 
 
 def run(work: str | Path, model_size: str = "medium", device: str = "auto",
-        only_missing: bool = True):
+        only_missing: bool = True, language: str = "en"):
     from faster_whisper import WhisperModel
 
     compute = "float16" if device != "cpu" else "int8"
@@ -20,7 +20,7 @@ def run(work: str | Path, model_size: str = "medium", device: str = "auto",
         if not fala.arquivo or not Path(fala.arquivo).exists():
             fala.status = "erro:arquivo ausente"
             continue
-        segments, _ = model.transcribe(fala.arquivo, language="en",
+        segments, _ = model.transcribe(fala.arquivo, language=language,
                                        beam_size=5, vad_filter=False)
         fala.texto_en = " ".join(s.text.strip() for s in segments).strip()
         fala.status = "transcrito" if fala.texto_en else "erro:sem fala"

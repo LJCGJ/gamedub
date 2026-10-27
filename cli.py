@@ -1,55 +1,66 @@
 #!/usr/bin/env python3
-"""GameDub — linha de comando."""
+"""GameDub — linha de comando.
+
+O perfil do jogo (profiles/<jogo>.json) é escolhido no `extract` e fica
+gravado em work/fonte.json; as demais etapas o leem de lá.
+"""
 from __future__ import annotations
 
 import argparse
 import json
 from pathlib import Path
 
-from gamedub import catalog
-from gamedub.formats import upk
+from gamedub import catalog, profile as profiles
+from gamedub.formats import registry
+
+
+def _fonte(work: Path) -> dict:
+    return json.loads((work / "fonte.json").read_text(encoding="utf-8"))
+
+
+def _profile_for(work: Path) -> profiles.Profile:
+    return profiles.load(_fonte(work).get("perfil"))
+
+
+def cmd_profiles(_a):
+    for p in profiles.available():
+        print(" ", p)
 
 
 def cmd_info(a):
-    pkg = upk.load(a.pacote)
-    waves = pkg.sound_waves()
-    print(f"versão {pkg.version}/{pkg.licensee}  comprimido={pkg.compressed}")
-    print(f"nomes={len(pkg.names)} imports={len(pkg.imports)} exports={len(pkg.exports)}")
-    print(f"SoundNodeWave: {len(waves)}")
-    classes = {}
-    for e in pkg.exports:
-        classes[pkg.class_name(e)] = classes.get(pkg.class_name(e), 0) + 1
-    for cls, n in sorted(classes.items(), key=lambda kv: -kv[1])[:15]:
-        print(f"  {n:5d}  {cls}")
-    for e in waves[:10]:
-        slot = upk.find_ogg(pkg, e)
-        print(f"  {pkg.full_name(e)}  size={e.serial_size}  ogg={slot.size if slot else '-'}")
+    fmt = registry.get(a.formato or registry.guess(a.pacote))
+    print(fmt.describe(a.pacote))
 
 
 def cmd_extract(a):
-    pkg = upk.load(a.pacote)
+    prof = profiles.load(a.perfil)
+    fmt = registry.get(a.formato or prof.formato or registry.guess(a.pacote))
     work = Path(a.work)
-    res = upk.extract_all(pkg, work / "orig")
+    entries = fmt.extract(a.pacote, work / "orig")
     falas = []
-    for exp, path, size in res:
-        fid = pkg.full_name(exp)
-        falas.append(catalog.Fala(id=fid, personagem=catalog.guess_character(fid),
-                                  arquivo=str(path), tamanho=size,
-                                  duracao_s=catalog.duration_seconds(path)))
+    for fid, path, size in entries:
+        personagem = prof.character_for(fid) or catalog.guess_character(fid)
+        falas.append(catalog.Fala(id=fid, personagem=personagem, arquivo=str(path),
+                                  tamanho=size, duracao_s=catalog.duration_seconds(path)))
     catalog.save(work, falas)
-    (work / "fonte.json").write_text(json.dumps({"pacote": str(Path(a.pacote).resolve())}),
-                                     encoding="utf-8")
-    print(f"{len(falas)} falas extraídas de {len(pkg.sound_waves())} SoundNodeWave → {work/'falas.csv'}")
+    (work / "fonte.json").write_text(json.dumps({
+        "pacote": str(Path(a.pacote).resolve()),
+        "formato": fmt.name,
+        "perfil": a.perfil,
+    }, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"{len(falas)} falas extraídas → {work/'falas.csv'}")
 
 
 def cmd_transcribe(a):
     from gamedub import transcribe
-    transcribe.run(a.work, model_size=a.modelo, device=a.device)
+    prof = _profile_for(Path(a.work))
+    transcribe.run(a.work, model_size=a.modelo, device=a.device, language=prof.idioma_origem)
 
 
 def cmd_translate(a):
     from gamedub import translate
-    translate.run(a.work, backend=a.backend, model=a.modelo, glossario_path=a.glossario)
+    prof = _profile_for(Path(a.work))
+    translate.run(a.work, prof, backend=a.backend, model=a.modelo, glossario_extra=a.glossario)
 
 
 def cmd_synth(a):
@@ -59,14 +70,13 @@ def cmd_synth(a):
 
 def cmd_inject(a):
     work = Path(a.work)
-    fonte = json.loads((work / "fonte.json").read_text(encoding="utf-8"))["pacote"]
-    pkg = upk.load(fonte)
+    fonte = _fonte(work)
+    fmt = registry.get(fonte["formato"])
     falas = catalog.load(work)
     rep = {f.id: Path(f.audio_pt).read_bytes() for f in falas if f.audio_pt}
     if a.apenas:
         rep = {k: v for k, v in rep.items() if a.apenas in k}
-    data = upk.inject_same_size(pkg, rep)
-    upk.write_uncompressed(pkg, data, a.out)
+    fmt.inject(fonte["pacote"], rep, a.out)
     print(f"{len(rep)} falas injetadas → {a.out}")
 
 
@@ -74,9 +84,15 @@ def main():
     p = argparse.ArgumentParser(prog="gamedub")
     sub = p.add_subparsers(required=True)
 
-    s = sub.add_parser("info", help="inspeciona um .upk"); s.add_argument("pacote"); s.set_defaults(fn=cmd_info)
+    s = sub.add_parser("profiles", help="lista perfis de jogo"); s.set_defaults(fn=cmd_profiles)
 
-    s = sub.add_parser("extract"); s.add_argument("pacote"); s.add_argument("work"); s.set_defaults(fn=cmd_extract)
+    s = sub.add_parser("info", help="inspeciona um pacote"); s.add_argument("pacote")
+    s.add_argument("--formato", choices=registry.names()); s.set_defaults(fn=cmd_info)
+
+    s = sub.add_parser("extract"); s.add_argument("pacote"); s.add_argument("work")
+    s.add_argument("--perfil", help="nome em profiles/ (ex.: borderlands1)")
+    s.add_argument("--formato", choices=registry.names())
+    s.set_defaults(fn=cmd_extract)
 
     s = sub.add_parser("transcribe"); s.add_argument("work")
     s.add_argument("--modelo", default="medium"); s.add_argument("--device", default="auto")
@@ -84,7 +100,7 @@ def main():
 
     s = sub.add_parser("translate"); s.add_argument("work")
     s.add_argument("--backend", choices=["anthropic", "ollama"], default="anthropic")
-    s.add_argument("--modelo"); s.add_argument("--glossario")
+    s.add_argument("--modelo"); s.add_argument("--glossario", help="JSON extra que sobrescreve o do perfil")
     s.set_defaults(fn=cmd_translate)
 
     s = sub.add_parser("synth"); s.add_argument("work"); s.add_argument("--device", default="cuda")
