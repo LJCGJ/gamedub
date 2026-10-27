@@ -7,3 +7,5 @@ work/
 *.wav
 models/
 saida/
+app/src-tauri/target/
+app/src-tauri/gen/
