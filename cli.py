@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 
 from gamedub import catalog, profile as profiles, scan
@@ -63,8 +64,12 @@ def cmd_extract(a):
     falas = []
     for pacote, fmt in pacotes:
         rel = pacote.relative_to(game_dir).as_posix()
+        copia = work / "pacotes" / rel                  # cópia local: o jogo não é mais necessário
+        copia.parent.mkdir(parents=True, exist_ok=True)
+        if not copia.exists() or copia.stat().st_size != pacote.stat().st_size:
+            shutil.copy2(pacote, copia)
         out = work / "orig" / Path(rel).with_suffix("")
-        entries = fmt.extract(pacote, out)
+        entries = fmt.extract(copia, out)
         for fid, path, size in entries:
             personagem = prof.character_for(fid) or catalog.guess_character(fid)
             falas.append(catalog.Fala(id=fid, pacote=rel, personagem=personagem,
@@ -75,16 +80,25 @@ def cmd_extract(a):
     catalog.save(work, falas)
     (work / "fonte.json").write_text(json.dumps({
         "jogo_dir": str(game_dir.resolve()),
+        "pacotes_dir": str((work / "pacotes").resolve()),
         "perfil": a.perfil,
         "pacotes": {pacote.relative_to(game_dir).as_posix(): fmt.name for pacote, fmt in pacotes},
     }, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"{len(falas)} falas de {len(pacotes)} pacote(s) → {work/'falas.csv'}")
+    print(f"pacotes copiados para {work/'pacotes'}; as próximas etapas não precisam do jogo instalado")
 
 
 def cmd_transcribe(a):
     from gamedub import transcribe
     prof = _profile_for(Path(a.work))
-    transcribe.run(a.work, model_size=a.modelo, device=a.device, language=prof.idioma_origem)
+    transcribe.run(a.work, model_size=a.modelo, device=a.device,
+                   language=prof.idioma_origem, only_missing=not a.refazer)
+
+
+def cmd_models(a):
+    from gamedub import transcribe
+    path = transcribe.download(a.modelo)
+    print(f"modelo {a.modelo} disponível em {path}")
 
 
 def cmd_translate(a):
@@ -101,7 +115,7 @@ def cmd_synth(a):
 def cmd_inject(a):
     work = Path(a.work)
     fonte = _fonte(work)
-    game_dir = Path(fonte["jogo_dir"])
+    src_dir = Path(fonte.get("pacotes_dir") or fonte["jogo_dir"])
     out_dir = Path(a.out)
     falas = [f for f in catalog.load(work) if f.audio_pt]
     if a.apenas:
@@ -116,7 +130,7 @@ def cmd_inject(a):
         fmt = registry.get(fonte["pacotes"][rel])
         dest = out_dir / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
-        fmt.inject(game_dir / rel, rep, dest)
+        fmt.inject(src_dir / rel, rep, dest)
         total += len(rep)
         print(f"  {len(rep):5d} falas  {rel}")
     print(f"{total} falas injetadas em {len(por_pacote)} pacote(s) → {out_dir}")
@@ -145,9 +159,16 @@ def main():
     s.add_argument("--limite", type=int, help="só os N pacotes com mais falas (útil para testar)")
     s.set_defaults(fn=cmd_extract)
 
-    s = sub.add_parser("transcribe"); s.add_argument("work")
-    s.add_argument("--modelo", default="medium"); s.add_argument("--device", default="auto")
+    s = sub.add_parser("transcribe", help="transcreve as falas extraídas (retoma de onde parou)")
+    s.add_argument("work")
+    s.add_argument("--modelo", default="medium", choices=["tiny", "base", "small", "medium", "large-v3", "turbo"])
+    s.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
+    s.add_argument("--refazer", action="store_true", help="transcreve de novo até as falas já feitas")
     s.set_defaults(fn=cmd_transcribe)
+
+    s = sub.add_parser("models", help="baixa o modelo Whisper para a pasta models/ (uso offline)")
+    s.add_argument("--modelo", default="medium", choices=["tiny", "base", "small", "medium", "large-v3", "turbo"])
+    s.set_defaults(fn=cmd_models)
 
     s = sub.add_parser("translate"); s.add_argument("work")
     s.add_argument("--backend", choices=["anthropic", "ollama"], default="anthropic")
