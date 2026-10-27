@@ -2,6 +2,7 @@
 falas.csv — a tabela única que todas as etapas leem e gravam.
 
 Colunas:
+  pacote      caminho do pacote de origem, relativo à pasta do jogo
   id          nome completo do export (ex.: Arid_P.TheWorld.PersistentLevel.Claptrap_Intro_01)
   personagem  derivado do id; editável à mão
   arquivo     caminho do .ogg original extraído
@@ -20,13 +21,14 @@ import subprocess
 from dataclasses import dataclass, asdict, fields
 from pathlib import Path
 
-COLUNAS = ["id", "personagem", "arquivo", "duracao_s", "tamanho",
+COLUNAS = ["pacote", "id", "personagem", "arquivo", "duracao_s", "tamanho",
            "texto_en", "texto_pt", "audio_pt", "status"]
 
 
 @dataclass
 class Fala:
     id: str
+    pacote: str = ""
     personagem: str = ""
     arquivo: str = ""
     duracao_s: float = 0.0

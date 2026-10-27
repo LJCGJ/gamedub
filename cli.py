@@ -1,55 +1,110 @@
 #!/usr/bin/env python3
-"""GameDub — linha de comando."""
+"""GameDub — linha de comando.
+
+Fluxo normal: apontar para a PASTA DO JOGO. O `scan` descobre os pacotes
+com voz; o `extract` extrai todos eles; `transcribe`/`translate`/`synth`
+trabalham no falas.csv; o `inject` gera os pacotes traduzidos em uma
+pasta espelho, pronta para copiar por cima do jogo (guarde backup).
+
+O perfil do jogo (profiles/<jogo>.json) é escolhido no `extract` e fica
+gravado em work/fonte.json; as demais etapas o leem de lá.
+"""
 from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 
-from gamedub import catalog
-from gamedub.formats import upk
+from gamedub import catalog, profile as profiles, scan
+from gamedub.formats import registry
+
+
+def _fonte(work: Path) -> dict:
+    return json.loads((work / "fonte.json").read_text(encoding="utf-8"))
+
+
+def _profile_for(work: Path) -> profiles.Profile:
+    return profiles.load(_fonte(work).get("perfil"))
+
+
+def cmd_profiles(_a):
+    for p in profiles.available():
+        print(" ", p)
 
 
 def cmd_info(a):
-    pkg = upk.load(a.pacote)
-    waves = pkg.sound_waves()
-    print(f"versão {pkg.version}/{pkg.licensee}  comprimido={pkg.compressed}")
-    print(f"nomes={len(pkg.names)} imports={len(pkg.imports)} exports={len(pkg.exports)}")
-    print(f"SoundNodeWave: {len(waves)}")
-    classes = {}
-    for e in pkg.exports:
-        classes[pkg.class_name(e)] = classes.get(pkg.class_name(e), 0) + 1
-    for cls, n in sorted(classes.items(), key=lambda kv: -kv[1])[:15]:
-        print(f"  {n:5d}  {cls}")
-    for e in waves[:10]:
-        slot = upk.find_ogg(pkg, e)
-        print(f"  {pkg.full_name(e)}  size={e.serial_size}  ogg={slot.size if slot else '-'}")
+    fmt = registry.get(a.formato or registry.guess(a.pacote))
+    print(fmt.describe(a.pacote))
+
+
+def cmd_scan(a):
+    prof = profiles.load(a.perfil)
+    found = scan.discover(a.jogo, prof, a.formato)
+    print(scan.report(found, Path(a.jogo)))
 
 
 def cmd_extract(a):
-    pkg = upk.load(a.pacote)
+    prof = profiles.load(a.perfil)
+    alvo = Path(a.jogo)
     work = Path(a.work)
-    res = upk.extract_all(pkg, work / "orig")
+
+    if alvo.is_file():                      # um pacote só
+        game_dir = alvo.parent
+        pacotes = [(alvo, registry.get(a.formato or prof.formato or registry.guess(alvo)))]
+    else:                                   # pasta do jogo
+        game_dir = alvo
+        found = [f for f in scan.discover(alvo, prof, a.formato) if f.falas > 0]
+        if a.limite:
+            found = sorted(found, key=lambda f: -f.falas)[:a.limite]
+        pacotes = [(f.path, registry.get(f.formato)) for f in found]
+        if not pacotes:
+            raise SystemExit("nenhum pacote com voz encontrado — confira o perfil (caminhos/filtro_arquivo)")
+
     falas = []
-    for exp, path, size in res:
-        fid = pkg.full_name(exp)
-        falas.append(catalog.Fala(id=fid, personagem=catalog.guess_character(fid),
-                                  arquivo=str(path), tamanho=size,
-                                  duracao_s=catalog.duration_seconds(path)))
+    for pacote, fmt in pacotes:
+        rel = pacote.relative_to(game_dir).as_posix()
+        copia = work / "pacotes" / rel                  # cópia local: o jogo não é mais necessário
+        copia.parent.mkdir(parents=True, exist_ok=True)
+        if not copia.exists() or copia.stat().st_size != pacote.stat().st_size:
+            shutil.copy2(pacote, copia)
+        out = work / "orig" / Path(rel).with_suffix("")
+        entries = fmt.extract(copia, out)
+        for fid, path, size in entries:
+            personagem = prof.character_for(fid) or catalog.guess_character(fid)
+            falas.append(catalog.Fala(id=fid, pacote=rel, personagem=personagem,
+                                      arquivo=str(path), tamanho=size,
+                                      duracao_s=catalog.duration_seconds(path)))
+        print(f"  {len(entries):5d} falas  {rel}")
+
     catalog.save(work, falas)
-    (work / "fonte.json").write_text(json.dumps({"pacote": str(Path(a.pacote).resolve())}),
-                                     encoding="utf-8")
-    print(f"{len(falas)} falas extraídas de {len(pkg.sound_waves())} SoundNodeWave → {work/'falas.csv'}")
+    (work / "fonte.json").write_text(json.dumps({
+        "jogo_dir": str(game_dir.resolve()),
+        "pacotes_dir": str((work / "pacotes").resolve()),
+        "perfil": a.perfil,
+        "pacotes": {pacote.relative_to(game_dir).as_posix(): fmt.name for pacote, fmt in pacotes},
+    }, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"{len(falas)} falas de {len(pacotes)} pacote(s) → {work/'falas.csv'}")
+    print(f"pacotes copiados para {work/'pacotes'}; as próximas etapas não precisam do jogo instalado")
 
 
 def cmd_transcribe(a):
     from gamedub import transcribe
-    transcribe.run(a.work, model_size=a.modelo, device=a.device)
+    prof = _profile_for(Path(a.work))
+    transcribe.run(a.work, model_size=a.modelo, device=a.device,
+                   language=prof.idioma_origem, only_missing=not a.refazer)
+
+
+def cmd_models(a):
+    from gamedub import transcribe
+    path = transcribe.download(a.modelo)
+    print(f"modelo {a.modelo} disponível em {path}")
 
 
 def cmd_translate(a):
     from gamedub import translate
-    translate.run(a.work, backend=a.backend, model=a.modelo, glossario_path=a.glossario)
+    prof = _profile_for(Path(a.work))
+    translate.run(a.work, prof, backend=a.backend, model=a.modelo, glossario_extra=a.glossario)
 
 
 def cmd_synth(a):
@@ -59,38 +114,72 @@ def cmd_synth(a):
 
 def cmd_inject(a):
     work = Path(a.work)
-    fonte = json.loads((work / "fonte.json").read_text(encoding="utf-8"))["pacote"]
-    pkg = upk.load(fonte)
-    falas = catalog.load(work)
-    rep = {f.id: Path(f.audio_pt).read_bytes() for f in falas if f.audio_pt}
+    fonte = _fonte(work)
+    src_dir = Path(fonte.get("pacotes_dir") or fonte["jogo_dir"])
+    out_dir = Path(a.out)
+    falas = [f for f in catalog.load(work) if f.audio_pt]
     if a.apenas:
-        rep = {k: v for k, v in rep.items() if a.apenas in k}
-    data = upk.inject_same_size(pkg, rep)
-    upk.write_uncompressed(pkg, data, a.out)
-    print(f"{len(rep)} falas injetadas → {a.out}")
+        falas = [f for f in falas if a.apenas in f.id]
+
+    por_pacote: dict[str, dict[str, bytes]] = {}
+    for f in falas:
+        por_pacote.setdefault(f.pacote, {})[f.id] = Path(f.audio_pt).read_bytes()
+
+    total = 0
+    for rel, rep in por_pacote.items():
+        fmt = registry.get(fonte["pacotes"][rel])
+        dest = out_dir / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        fmt.inject(src_dir / rel, rep, dest)
+        total += len(rep)
+        print(f"  {len(rep):5d} falas  {rel}")
+    print(f"{total} falas injetadas em {len(por_pacote)} pacote(s) → {out_dir}")
+    print("Copie o conteúdo dessa pasta por cima da pasta do jogo (faça backup dos originais).")
 
 
 def main():
     p = argparse.ArgumentParser(prog="gamedub")
     sub = p.add_subparsers(required=True)
 
-    s = sub.add_parser("info", help="inspeciona um .upk"); s.add_argument("pacote"); s.set_defaults(fn=cmd_info)
+    s = sub.add_parser("profiles", help="lista perfis de jogo"); s.set_defaults(fn=cmd_profiles)
 
-    s = sub.add_parser("extract"); s.add_argument("pacote"); s.add_argument("work"); s.set_defaults(fn=cmd_extract)
+    s = sub.add_parser("info", help="inspeciona um pacote"); s.add_argument("pacote")
+    s.add_argument("--formato", choices=registry.names()); s.set_defaults(fn=cmd_info)
 
-    s = sub.add_parser("transcribe"); s.add_argument("work")
-    s.add_argument("--modelo", default="medium"); s.add_argument("--device", default="auto")
+    s = sub.add_parser("scan", help="descobre os pacotes com voz na pasta do jogo")
+    s.add_argument("jogo", help="pasta do jogo instalado")
+    s.add_argument("--perfil"); s.add_argument("--formato", choices=registry.names())
+    s.set_defaults(fn=cmd_scan)
+
+    s = sub.add_parser("extract", help="extrai as falas da pasta do jogo (ou de um pacote)")
+    s.add_argument("jogo", help="pasta do jogo instalado, ou um pacote específico")
+    s.add_argument("work")
+    s.add_argument("--perfil", help="nome em profiles/ (ex.: borderlands1)")
+    s.add_argument("--formato", choices=registry.names())
+    s.add_argument("--limite", type=int, help="só os N pacotes com mais falas (útil para testar)")
+    s.set_defaults(fn=cmd_extract)
+
+    s = sub.add_parser("transcribe", help="transcreve as falas extraídas (retoma de onde parou)")
+    s.add_argument("work")
+    s.add_argument("--modelo", default="medium", choices=["tiny", "base", "small", "medium", "large-v3", "turbo"])
+    s.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
+    s.add_argument("--refazer", action="store_true", help="transcreve de novo até as falas já feitas")
     s.set_defaults(fn=cmd_transcribe)
+
+    s = sub.add_parser("models", help="baixa o modelo Whisper para a pasta models/ (uso offline)")
+    s.add_argument("--modelo", default="medium", choices=["tiny", "base", "small", "medium", "large-v3", "turbo"])
+    s.set_defaults(fn=cmd_models)
 
     s = sub.add_parser("translate"); s.add_argument("work")
     s.add_argument("--backend", choices=["anthropic", "ollama"], default="anthropic")
-    s.add_argument("--modelo"); s.add_argument("--glossario")
+    s.add_argument("--modelo"); s.add_argument("--glossario", help="JSON extra que sobrescreve o do perfil")
     s.set_defaults(fn=cmd_translate)
 
     s = sub.add_parser("synth"); s.add_argument("work"); s.add_argument("--device", default="cuda")
     s.set_defaults(fn=cmd_synth)
 
-    s = sub.add_parser("inject"); s.add_argument("work"); s.add_argument("--out", required=True)
+    s = sub.add_parser("inject", help="gera os pacotes traduzidos em uma pasta espelho")
+    s.add_argument("work"); s.add_argument("--out", required=True, help="pasta de saída (espelha a do jogo)")
     s.add_argument("--apenas", help="injeta só falas cujo id contém este texto (ex.: Claptrap)")
     s.set_defaults(fn=cmd_inject)
 

@@ -10,9 +10,20 @@ Fluxo:
       ◀──inject──  .ogg (PT-BR)  ◀──synth────────  texto_pt ◀──translate──┘
 ```
 
-Primeiro alvo: **Borderlands 1 (PC, Unreal Engine 3)**. O núcleo
-(transcrever → traduzir → sintetizar) é genérico; a leitura e a
-reinjeção ficam em `gamedub/formats/` e ganham um módulo por engine.
+O núcleo (transcrever → traduzir → sintetizar) não conhece nenhum jogo.
+O que é específico fica em dois lugares:
+
+- **`profiles/<jogo>.json`** — glossário, descrição do tom para o
+  tradutor, regex de `id da fala → personagem`, formato do pacote.
+  É o que a comunidade preenche para cada jogo novo, sem mexer em código.
+- **`gamedub/formats/<engine>_plugin.py`** — como ler e reescrever o
+  pacote daquela engine. Interface em `formats/registry.py`
+  (`describe`, `extract`, `inject`).
+
+Primeiro alvo: **Borderlands 1 (PC, Unreal Engine 3)** — perfil
+`borderlands1`, plugin `upk`. Próximos plugins, por cobertura de jogos:
+Wwise (`.bnk/.wem`: Borderlands 2/3 e a maioria dos AAA), FMOD
+(`.fsb/.bank`), UE4/5 (`.pak`), Unity (`.assets`).
 
 ## Requisitos
 
@@ -26,27 +37,36 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Uso (prova de conceito com um pacote)
+## Uso
+
+Aponte para a **pasta do jogo instalado**; o software descobre os pacotes
+de voz sozinho a partir do perfil.
 
 ```bash
-# 1. lista e extrai as falas de um .upk
-python cli.py extract "C:\...\Borderlands\WillowGame\CookedPC\Maps\Arid\Arid_P_INT.upk" work\arid
+# 1. descobre quais pacotes têm voz (não altera nada)
+python cli.py scan "C:\Program Files (x86)\Steam\steamapps\common\Borderlands" --perfil borderlands1
 
-# 2. transcreve (faster-whisper)
-python cli.py transcribe work\arid
+# 2. extrai todas as falas (ou --limite 1 para testar só o maior pacote)
+python cli.py extract "C:\...\Borderlands" work\bl1 --perfil borderlands1
 
-# 3. traduz com glossário
-python cli.py translate work\arid
+# 3. transcreve (faster-whisper)
+python cli.py transcribe work\bl1
 
-# 4. sintetiza em PT-BR, encaixando na duração original
-python cli.py synth work\arid
+# 4. traduz com o glossário do perfil
+python cli.py translate work\bl1
 
-# 5. gera o pacote traduzido (não altera o original)
-python cli.py inject work\arid --out "C:\...\Arid_P_BRA.upk"
+# 5. sintetiza em PT-BR, encaixando na duração original
+python cli.py synth work\bl1
+
+# 6. gera os pacotes traduzidos numa pasta espelho (os originais não são tocados)
+python cli.py inject work\bl1 --out saida\bl1
 ```
 
-Cada etapa lê e grava `work\arid\falas.csv`, então dá pra revisar a
-tradução à mão entre `translate` e `synth`.
+Depois é copiar o conteúdo de `saida\bl1` por cima da pasta do jogo,
+guardando backup dos originais. Cada etapa lê e grava `work\bl1\falas.csv`,
+então dá pra revisar a tradução à mão entre `translate` e `synth`.
+
+`extract` e `info` também aceitam um único pacote em vez da pasta.
 
 ## Estado
 

@@ -5,3 +5,5 @@ work/
 *.upk
 *.ogg
 *.wav
+models/
+saida/

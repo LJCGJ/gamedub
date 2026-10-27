@@ -1,0 +1,47 @@
+{
+  "nome": "Borderlands (2009) / GOTY Enhanced",
+  "formato": "upk",
+  "idioma_origem": "en",
+  "caminhos": [
+    "WillowGame/CookedPC"
+  ],
+  "filtro_arquivo": "_INT\\.upk$",
+  "_comentario_busca": "só os pacotes localizados em inglês (_INT) carregam voz; os demais são mapas/texturas",
+  "descricao": "FPS de humor ácido, violento e irreverente. Gírias, xingamentos e piadas devem soar naturais em PT-BR.",
+  "glossario": {
+    "Claptrap": "Claptrap",
+    "Pandora": "Pandora",
+    "Vault": "Vault",
+    "Vault Hunter": "Caçador da Vault",
+    "Crimson Lance": "Crimson Lance",
+    "Hyperion": "Hyperion",
+    "Dahl": "Dahl",
+    "Atlas": "Atlas",
+    "Fyrestone": "Fyrestone",
+    "Skag": "Skag",
+    "Rakk": "Rakk",
+    "Psycho": "Psycho",
+    "Bandit": "bandido",
+    "Eridian": "Eridiano",
+    "Catch-A-Ride": "Catch-A-Ride",
+    "Marcus": "Marcus",
+    "Moxxi": "Moxxi",
+    "Scooter": "Scooter",
+    "Tannis": "Tannis",
+    "Zed": "Zed",
+    "Angel": "Angel"
+  },
+  "personagens": {
+    "_comentario": "regex (case-insensitive) sobre o id da fala -> nome do personagem; o primeiro que casar vence",
+    "^claptrap": "Claptrap",
+    "^cl4p": "Claptrap",
+    "^marcus": "Marcus",
+    "^moxxi": "Moxxi",
+    "^scooter": "Scooter",
+    "^tannis": "Tannis",
+    "^zed": "Zed",
+    "^angel": "Angel",
+    "^helena|^pierce": "Helena Pierce",
+    "^tk|^baha": "T.K. Baha"
+  }
+}
