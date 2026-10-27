@@ -4,6 +4,7 @@ Registro de plugins de formato. Cada plugin implementa:
     name: str
     extensions: tuple[str, ...]
     describe(pacote) -> str
+    count_voices(pacote) -> int          (barato: só conta, usado pelo scan)
     extract(pacote, out_dir) -> list[(id, caminho_audio, tamanho_max)]
     inject(pacote, {id: bytes}, destino) -> None
 
@@ -21,6 +22,7 @@ class FormatPlugin(Protocol):
     extensions: tuple[str, ...]
 
     def describe(self, pacote: str | Path) -> str: ...
+    def count_voices(self, pacote: str | Path) -> int: ...
     def extract(self, pacote: str | Path, out_dir: str | Path) -> list[tuple[str, Path, int]]: ...
     def inject(self, pacote: str | Path, replacements: dict[str, bytes], dest: str | Path) -> None: ...
 

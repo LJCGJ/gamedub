@@ -2,6 +2,11 @@
   "nome": "Borderlands (2009) / GOTY Enhanced",
   "formato": "upk",
   "idioma_origem": "en",
+  "caminhos": [
+    "WillowGame/CookedPC"
+  ],
+  "filtro_arquivo": "_INT\\.upk$",
+  "_comentario_busca": "só os pacotes localizados em inglês (_INT) carregam voz; os demais são mapas/texturas",
   "descricao": "FPS de humor ácido, violento e irreverente. Gírias, xingamentos e piadas devem soar naturais em PT-BR.",
   "glossario": {
     "Claptrap": "Claptrap",

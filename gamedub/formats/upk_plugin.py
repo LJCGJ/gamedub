@@ -29,6 +29,9 @@ class UpkPlugin:
             linhas.append(f"  {pkg.full_name(e)}  serial={e.serial_size}  ogg={slot.size if slot else '-'}")
         return "\n".join(linhas)
 
+    def count_voices(self, pacote) -> int:
+        return len(upk.load(pacote).sound_waves())
+
     def extract(self, pacote, out_dir) -> list[tuple[str, Path, int]]:
         pkg = upk.load(pacote)
         return [(pkg.full_name(exp), path, size)

@@ -21,6 +21,8 @@ class Profile:
     descricao: str = ""
     glossario: dict[str, str] = field(default_factory=dict)
     personagens: dict[str, str] = field(default_factory=dict)
+    caminhos: list[str] = field(default_factory=list)   # subpastas do jogo onde procurar
+    filtro_arquivo: str = ""                             # regex sobre o nome do pacote
 
     def character_for(self, fala_id: str) -> str | None:
         leaf = fala_id.split(".")[-1]
@@ -52,4 +54,6 @@ def load(nome_ou_caminho: str | None) -> Profile:
         descricao=data.get("descricao", ""),
         glossario=data.get("glossario", {}),
         personagens=data.get("personagens", {}),
+        caminhos=data.get("caminhos", []),
+        filtro_arquivo=data.get("filtro_arquivo", ""),
     )

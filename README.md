@@ -37,30 +37,36 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Uso (prova de conceito com um pacote)
+## Uso
+
+Aponte para a **pasta do jogo instalado**; o software descobre os pacotes
+de voz sozinho a partir do perfil.
 
 ```bash
-# 0. inspeciona o pacote (formato detectado pela extensão, ou --formato)
-python cli.py info "C:\...\Borderlands\WillowGame\CookedPC\Maps\Arid\Arid_P_INT.upk"
+# 1. descobre quais pacotes têm voz (não altera nada)
+python cli.py scan "C:\Program Files (x86)\Steam\steamapps\common\Borderlands" --perfil borderlands1
 
-# 1. extrai as falas usando o perfil do jogo
-python cli.py extract "C:\...\Arid_P_INT.upk" work\arid --perfil borderlands1
+# 2. extrai todas as falas (ou --limite 1 para testar só o maior pacote)
+python cli.py extract "C:\...\Borderlands" work\bl1 --perfil borderlands1
 
-# 2. transcreve (faster-whisper)
-python cli.py transcribe work\arid
+# 3. transcreve (faster-whisper)
+python cli.py transcribe work\bl1
 
-# 3. traduz com glossário
-python cli.py translate work\arid
+# 4. traduz com o glossário do perfil
+python cli.py translate work\bl1
 
-# 4. sintetiza em PT-BR, encaixando na duração original
-python cli.py synth work\arid
+# 5. sintetiza em PT-BR, encaixando na duração original
+python cli.py synth work\bl1
 
-# 5. gera o pacote traduzido (não altera o original)
-python cli.py inject work\arid --out "C:\...\Arid_P_BRA.upk"
+# 6. gera os pacotes traduzidos numa pasta espelho (os originais não são tocados)
+python cli.py inject work\bl1 --out saida\bl1
 ```
 
-Cada etapa lê e grava `work\arid\falas.csv`, então dá pra revisar a
-tradução à mão entre `translate` e `synth`.
+Depois é copiar o conteúdo de `saida\bl1` por cima da pasta do jogo,
+guardando backup dos originais. Cada etapa lê e grava `work\bl1\falas.csv`,
+então dá pra revisar a tradução à mão entre `translate` e `synth`.
+
+`extract` e `info` também aceitam um único pacote em vez da pasta.
 
 ## Estado
 
