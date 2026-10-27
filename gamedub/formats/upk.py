@@ -168,7 +168,7 @@ def _read_header_and_chunks(raw: bytes):
 
 
 def _decompress_chunks(raw: bytes, chunks) -> bytes:
-    import lzo  # python-lzo
+    from . import lzo1x
 
     total = max(u_off + u_size for u_off, u_size, _, _ in chunks)
     out = bytearray(max(total, len(raw)))
@@ -192,7 +192,7 @@ def _decompress_chunks(raw: bytes, chunks) -> bytes:
         cursor = u_off
         for cs, us in blocks:
             blob = r.bytes(cs)
-            dec = lzo.decompress(blob, False, us)
+            dec = lzo1x.decompress(blob, us)
             out[cursor:cursor + us] = dec
             cursor += us
     return bytes(out)

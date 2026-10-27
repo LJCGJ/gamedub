@@ -1,7 +1,13 @@
-python-lzo>=1.15
+# --- núcleo (leve, sempre instalar)
+lzallright>=0.2        # LZO1X em Rust com wheels prontos; há fallback em Python puro se faltar
+requests>=2.31
+numpy
+soundfile>=0.12
+
+# --- IA (pesado; instalar quando for rodar transcribe/translate/synth)
 faster-whisper>=1.0
 anthropic>=0.40
-requests>=2.31
-TTS>=0.22          # Coqui XTTS v2
-soundfile>=0.12
-numpy
+# XTTS v2: o pacote `TTS` da Coqui só tem wheels até Python 3.11.
+# Para 3.12+ use o fork mantido:  pip install coqui-tts
+coqui-tts>=0.24 ; python_version >= "3.12"
+TTS>=0.22 ; python_version < "3.12"
